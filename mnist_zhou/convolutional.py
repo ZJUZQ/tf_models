@@ -16,11 +16,13 @@ import gzip
 import os
 import sys
 import time
+from datetime import datetime # use datetime.now()
 
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
 WORK_DIRECTORY = '/mnist'
@@ -150,41 +152,52 @@ def main(_):
   # This is where training samples and labels are fed to the graph.
   # These placeholder nodes will be fed a batch of training data at each
   # training step using the {feed_dict} argument to the Run() call below.
-  train_data_node = tf.placeholder(
-      data_type(),
-      shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
-  train_labels_node = tf.placeholder(tf.int64, shape=(BATCH_SIZE,))
-  eval_data = tf.placeholder(
-      data_type(),
-      shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
+  with tf.name_scope('train_data_node'):
+    train_data_node = tf.placeholder(
+        data_type(),
+        shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
+  with tf.name_scope('train_labels_node'):
+    train_labels_node = tf.placeholder(tf.int64, shape=(BATCH_SIZE,))
+  with tf.name_scope('eval_data'):
+    eval_data = tf.placeholder(
+        data_type(),
+        shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   # The variables below hold all the trainable weights. They are passed an
   # initial value which will be assigned when we call:
   # {tf.global_variables_initializer().run()}
-  conv1_weights = tf.Variable(
-      tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
-                          stddev=0.1,
-                          seed=SEED, dtype=data_type()))
-  conv1_biases = tf.Variable(tf.zeros([32], dtype=data_type()))
+  with tf.name_scope('conv1_weights'):
+    conv1_weights = tf.Variable(
+        tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
+                            stddev=0.1,
+                            seed=SEED, dtype=data_type()))
+  with tf.name_scope('conv1_biases'):
+    conv1_biases = tf.Variable(tf.zeros([32], dtype=data_type()))
 
-  conv2_weights = tf.Variable(tf.truncated_normal(
-      [5, 5, 32, 64], stddev=0.1,
-      seed=SEED, dtype=data_type()))
-  conv2_biases = tf.Variable(tf.constant(0.1, shape=[64], dtype=data_type()))
+  with tf.name_scope('conv2_weights'):
+    conv2_weights = tf.Variable(tf.truncated_normal(
+        [5, 5, 32, 64], stddev=0.1,
+        seed=SEED, dtype=data_type()))
+  with tf.name_scope('conv2_biases'):
+    conv2_biases = tf.Variable(tf.constant(0.1, shape=[64], dtype=data_type()))
 
-  fc1_weights = tf.Variable(  # fully connected, depth 512.
-      tf.truncated_normal([IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 64, 512],
-                          stddev=0.1,
-                          seed=SEED,
-                          dtype=data_type()))
-  fc1_biases = tf.Variable(tf.constant(0.1, shape=[512], dtype=data_type()))
+  with tf.name_scope('fc1_weights'):
+    fc1_weights = tf.Variable(  # fully connected, depth 512.
+        tf.truncated_normal([IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 64, 512],
+                            stddev=0.1,
+                            seed=SEED,
+                            dtype=data_type()))
+  with tf.name_scope('fc1_biases'):
+    fc1_biases = tf.Variable(tf.constant(0.1, shape=[512], dtype=data_type()))
 
-  fc2_weights = tf.Variable(tf.truncated_normal([512, NUM_LABELS],
-                                                stddev=0.1,
-                                                seed=SEED,
-                                                dtype=data_type()))
-  fc2_biases = tf.Variable(tf.constant(
-      0.1, shape=[NUM_LABELS], dtype=data_type()))
+  with tf.name_scope('fc2_weights'):
+    fc2_weights = tf.Variable(tf.truncated_normal([512, NUM_LABELS],
+                                                  stddev=0.1,
+                                                  seed=SEED,
+                                                  dtype=data_type()))
+  with tf.name_scope('fc2_biases'):
+    fc2_biases = tf.Variable(tf.constant(
+        0.1, shape=[NUM_LABELS], dtype=data_type()))
 
   # We will replicate the model structure for the training subgraph, as well
   # as the evaluation subgraphs, while sharing the trainable parameters.
@@ -193,37 +206,45 @@ def main(_):
     # 2D convolution, with 'SAME' padding (i.e. the output feature map has
     # the same size as the input). Note that {strides} is a 4D array whose
     # shape matches the data layout: [image index, y, x, depth].
-    conv1 = tf.nn.conv2d(data,
-                        conv1_weights,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    # Bias and rectified linear non-linearity.
-    relu1 = tf.nn.relu(tf.nn.bias_add(conv1, conv1_biases))
+    with tf.name_scope('conv1'):
+      conv1 = tf.nn.conv2d(data,
+                          conv1_weights,
+                          strides=[1, 1, 1, 1],
+                          padding='SAME')
+      # Bias and rectified linear non-linearity.
+      relu1 = tf.nn.relu(tf.nn.bias_add(conv1, conv1_biases))
+
     # Max pooling. The kernel size spec {ksize} also follows the layout of
     # the data. Here we have a pooling window of 2, and a stride of 2.
-    pool1 = tf.nn.max_pool(relu1,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
-                          padding='SAME')
+    with tf.name_scope('pool1'):
+      pool1 = tf.nn.max_pool(relu1,
+                            ksize=[1, 2, 2, 1],
+                            strides=[1, 2, 2, 1],
+                            padding='SAME')
     
-    conv2 = tf.nn.conv2d(pool1,
-                        conv2_weights,
-                        strides=[1, 1, 1, 1],
-                        padding='SAME')
-    relu2 = tf.nn.relu(tf.nn.bias_add(conv2, conv2_biases))
-    pool2 = tf.nn.max_pool(relu2,
-                          ksize=[1, 2, 2, 1],
-                          strides=[1, 2, 2, 1],
+    with tf.name_scope('conv2'):
+      conv2 = tf.nn.conv2d(pool1,
+                          conv2_weights,
+                          strides=[1, 1, 1, 1],
                           padding='SAME')
+      relu2 = tf.nn.relu(tf.nn.bias_add(conv2, conv2_biases))
+    with tf.name_scope('pool2'):
+      pool2 = tf.nn.max_pool(relu2,
+                            ksize=[1, 2, 2, 1],
+                            strides=[1, 2, 2, 1],
+                            padding='SAME')
     # Reshape the feature map cuboid into a 2D matrix to feed it to the
     # fully connected layers.
     pool2_shape = pool2.get_shape().as_list()  # [N, H, W, C]
-    pool2_reshape = tf.reshape(
-        pool2,
-        [pool2_shape[0], pool2_shape[1] * pool2_shape[2] * pool2_shape[3]])
+    with tf.name_scope('pool2_reshape'):
+      pool2_reshape = tf.reshape(
+          pool2,
+          [pool2_shape[0], pool2_shape[1] * pool2_shape[2] * pool2_shape[3]])
+
     # Fully connected layer. Note that the '+' operation automatically
     # broadcasts the biases.
-    fc1 = tf.nn.relu(tf.matmul(pool2_reshape, fc1_weights) + fc1_biases)
+    with tf.name_scope('fc1'):
+      fc1 = tf.nn.relu(tf.matmul(pool2_reshape, fc1_weights) + fc1_biases)
 
     # Add a 50% dropout during training only. Dropout also scales
     # activations such that no rescaling is needed at evaluation time.
@@ -235,37 +256,48 @@ def main(_):
     return tf.matmul(fc1, fc2_weights) + fc2_biases
 
   # Training computation: logits + cross-entropy loss.
-  logits = model(train_data_node, True)
-  loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-      labels=train_labels_node, logits=logits))
+  with tf.name_scope('logits'):
+    logits = model(train_data_node, True)
 
-  # L2 regularization for the fully connected parameters.
-  regularizers = (tf.nn.l2_loss(fc1_weights) + tf.nn.l2_loss(fc1_biases) +
-                  tf.nn.l2_loss(fc2_weights) + tf.nn.l2_loss(fc2_biases))
-  # Add the regularization term to the loss.
-  loss += 5e-4 * regularizers
+  with tf.name_scope('cross'):
+    with tf.name_scope('cross_entropy'):
+      loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+          labels=train_labels_node, logits=logits))
+
+    # L2 regularization for the fully connected parameters.
+    with tf.name_scope('regularizers'):
+      regularizers = (tf.nn.l2_loss(fc1_weights) + tf.nn.l2_loss(fc1_biases) +
+                      tf.nn.l2_loss(fc2_weights) + tf.nn.l2_loss(fc2_biases))
+    # Add the regularization term to the loss.
+    loss += 5e-4 * regularizers
 
   # Optimizer: set up a variable that's incremented once per batch and
   # controls the learning rate decay.
-  batch = tf.Variable(0, dtype=data_type())
+  with tf.name_scope('batch_number'):
+    batch = tf.Variable(0, dtype=data_type())
+  
   # Decay once per epoch, using an exponential schedule starting at 0.01.
-  learning_rate = tf.train.exponential_decay(   # decayed_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
-      0.01,                # Base learning rate.
-      batch * BATCH_SIZE,  # Current index into the dataset.
-      train_size,          # Decay step.
-      0.95,                # Decay rate.
-      staircase=True)
+  with tf.name_scope('learning_rate'):
+    learning_rate = tf.train.exponential_decay(   # decayed_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
+        0.01,                # Base learning rate.
+        batch * BATCH_SIZE,  # Current index into the dataset.
+        train_size,          # Decay step.
+        0.95,                # Decay rate.
+        staircase=True)
 
   # Use simple momentum for the optimization.
-  optimizer = tf.train.MomentumOptimizer(learning_rate,
-                                         0.9).minimize(loss,
-                                                       global_step=batch)
+  with tf.name_scope('optimizer'):
+    optimizer = tf.train.MomentumOptimizer(learning_rate,
+                                           0.9).minimize(loss,
+                                                         global_step=batch)
 
   # Predictions for the current training minibatch.
-  train_prediction = tf.nn.softmax(logits)
+  with tf.name_scope('train_prediction'):
+    train_prediction = tf.nn.softmax(logits)
 
   # Predictions for the test and validation, which we'll compute less often.
-  eval_prediction = tf.nn.softmax(model(eval_data))
+  with tf.name_scope('eval_prediction'):
+    eval_prediction = tf.nn.softmax(model(eval_data))
 
   # Small utility function to evaluate a dataset by feeding batches of data to
   # {eval_data} and pulling the results from {eval_predictions}.
@@ -289,9 +321,17 @@ def main(_):
         predictions[begin:, :] = batch_predictions[begin - size:, :]
     return predictions
 
+  logs_dir = './logs/train'
+  if tf.gfile.Exists(logs_dir):
+    tf.gfile.DeleteRecursively(logs_dir)
+  tf.gfile.MakeDirs(logs_dir)
+  
   # Create a local session to run the training.
   start_time = time.time()
   with tf.Session() as sess:
+    # sess.graph contains the graph definition; that enables the Graph Visualizer
+    train_writer = tf.summary.FileWriter('./logs/train', sess.graph)  # TensorBoard requires a logdir to read logs from
+
     # Run all the initializers to prepare the trainable parameters.
     tf.global_variables_initializer().run()
     print('Initialized!')
@@ -308,6 +348,7 @@ def main(_):
                    train_labels_node: batch_labels}
       # Run the optimizer to update weights.
       sess.run(optimizer, feed_dict=feed_dict)
+      #train_writer.add_summary(summary, step)
 
       # print some extra information once reach the evaluation frequency
       if step % EVAL_FREQUENCY == 0:
@@ -316,6 +357,7 @@ def main(_):
                                       feed_dict=feed_dict)
         elapsed_time = time.time() - start_time   # Return the time in seconds
         start_time = time.time()
+        print (datetime.now())
         print('Step %d (epoch %.2f), %.1f ms/batch' 
               %(step, 
                 float(step) * BATCH_SIZE / train_size,
@@ -331,7 +373,7 @@ def main(_):
           it to "flush" the buffer, meaning that it will write everything in the buffer to the 
           terminal, even if normally it would wait before doing so.
         """
-
+      
     # Finally print the test result!
     test_error = error_rate(eval_in_batches(test_data, sess), test_labels)
     print('Test error: %.1f%%' % test_error)
@@ -339,6 +381,8 @@ def main(_):
       print('test_error', test_error)
       assert test_error == 0.0, 'expected 0.0 test_error, got %.2f' % (
           test_error,)
+
+    train_writer.close()
 
 
 if __name__ == '__main__':
